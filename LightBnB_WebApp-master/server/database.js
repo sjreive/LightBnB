@@ -92,23 +92,60 @@ exports.getAllReservations = getAllReservations;
  * @return {Promise<[{}]>}  A promise to the properties.
  */
 const getAllProperties = function(options, limit = 10) {
-  return pool.query(
-    `SELECT properties.*, AVG(rating) as average_rating
-    FROM properties
-    JOIN property_reviews on property_id = properties.id
-    GROUP BY properties.id  
-    LIMIT $1;`, [limit]
-  )
+
+  // setup array to hold parameters available for the query
+  const queryParams = [];
+
+  // query prior to specifying params
+  let queryString = `
+  SELECT properties.*, AVG(rating) as average_rating
+  FROM properties
+  JOIN property_reviews on property_id = properties.id
+  `;
+
+  // Add options to query
+  const checkParamLength = function(queryParams) {
+    if (queryParams.length === 1) {
+      return 'WHERE';
+    } else {
+      return 'AND';
+    }
+  };
+
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `${checkParamLength(queryParams)} city LIKE $${queryParams.length} `;
+  }
+  if (options.minimum_price_per_night) {
+    queryParams.push(`${options.minimum_price_per_night * 100}`);
+    queryString += `${checkParamLength(queryParams)} cost_per_night >= $${queryParams.length} `;
+  }
+  if (options.maximum_price_per_night) {
+    queryParams.push(`${options.maximum_price_per_night * 100}`);
+    queryString += `${checkParamLength(queryParams)} cost_per_night <= $${queryParams.length} `;
+  }
+  if (options.minimum_rating) {
+    queryParams.push(`${options.minimum_rating}`);
+    queryString += `${checkParamLength(queryParams)} average_rating > $${queryParams.length} `;
+  }
+  
+  //Add query that comes after the WHERE + params
+  queryParams.push(limit);
+  queryString += `
+  GROUP BY properties.id
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length}
+  `;
+
+  //Check
+  console.log(queryString, queryParams);
+
+  //Run query
+  return pool.query(queryString, queryParams)
     .then(res => res.rows);
 };
 
 exports.getAllProperties = getAllProperties;
-
-
-
-
-
-
 
 
 /**
